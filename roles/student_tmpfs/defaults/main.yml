@@ -1,0 +1,3 @@
+---
+student_user: "{{ inventory_hostname | regex_replace('student-pc-', 'student_') }}"
+tmpfs_size: 512M

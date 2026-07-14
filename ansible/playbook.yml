@@ -2,47 +2,5 @@
 - name: Configure ephemeral tmpfs student account
   hosts: student_pcs
   become: true
-  vars:
-    student_user: "{{ inventory_hostname | regex_replace('student-pc-', 'student_') }}"
-    tmpfs_size: 512M
-
-  tasks:
-    - name: Create student user
-      user:
-        name: "{{ student_user }}"
-        home: "/home/{{ student_user }}"
-        shell: /bin/bash
-        create_home: true
-
-    - name: Mount tmpfs on student home
-      mount:
-        path: "/home/{{ student_user }}"
-        src: tmpfs
-        fstype: tmpfs
-        opts: "defaults,size={{ tmpfs_size }},uid={{ student_user }},gid={{ student_user }},mode=0700"
-        state: mounted
-
-    - name: Deploy home-init systemd unit
-      copy:
-        dest: "/etc/systemd/system/{{ student_user }}-home-init.service"
-        content: |
-          [Unit]
-          Description=Populate ephemeral {{ student_user }} home
-          DefaultDependencies=no
-          After=home-{{ student_user }}.mount
-          Requires=home-{{ student_user }}.mount
-          Before=display-manager.service
-
-          [Service]
-          Type=oneshot
-          ExecStart=/bin/cp -rT /etc/skel /home/{{ student_user }}
-          ExecStart=/bin/chown -R {{ student_user }}:{{ student_user }} /home/{{ student_user }}
-
-          [Install]
-          WantedBy=multi-user.target
-
-    - name: Enable home-init service
-      systemd:
-        name: "{{ student_user }}-home-init.service"
-        enabled: true
-        daemon_reload: true
+  roles:
+    - student_tmpfs

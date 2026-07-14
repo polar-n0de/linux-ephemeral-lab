@@ -3,7 +3,7 @@
   hosts: student_pcs
   become: true
   vars:
-    student_user: student
+    student_user: "{{ inventory_hostname | regex_replace('student-pc-', 'student_') }}"
     tmpfs_size: 512M
 
   tasks:

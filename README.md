@@ -26,19 +26,20 @@ proxmox-template-creator  →  qm clone  →  ansible (student_tmpfs role)  → 
 
 ## Repo structure
 
+```
 linux-ephemeral-lab/
 ├── ansible/
 │   ├── inventory.ini
 │   └── playbook.yml
 ├── roles/
 │   └── student_tmpfs/
-│       ├── README.md          # role variables & task breakdown
+│       ├── README.md
 │       ├── defaults/main.yml
 │       ├── tasks/main.yml
 │       └── files/99-usb-block.rules
 └── proxmox/
-└── template-notes.md
-
+    └── template-notes.md
+```
 ## Prerequisites
 
 - Ansible >= 2.14

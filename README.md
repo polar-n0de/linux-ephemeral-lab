@@ -1,60 +1,84 @@
+
 # linux-ephemeral-lab
 
-Ephemeral, tmpfs-backed Linux user accounts for shared/lab machines (school computer rooms, cyber cafes, kiosks). Every reboot wipes the user's home directory and restores a clean baseline — no persistent state, no manual cleanup, no accumulated junk/malware across sessions.
+Ephemeral, tmpfs-backed Linux user accounts for shared/lab machines (school computer rooms, driving-test labs, kiosks). Every reboot wipes the user's home directory and restores a clean baseline. USB mass storage is blocked to prevent data exfiltration/cheating. No persistent state, no manual cleanup.
 
 ## Problem
 
-Shared-use machines (driving school lab, public terminals) need each session to start from a known-clean state. Traditional approaches (manual cleanup scripts, re-imaging, Deep Freeze-style commercial tools) are slow, Windows-centric, or require extra software licenses.
+Shared-use machines need each session to start from a known-clean state, without commercial Deep Freeze-style tools or full re-imaging.
 
 ## Solution
 
 - User's home directory is mounted as `tmpfs` (RAM-backed, non-persistent).
 - A `systemd` oneshot service repopulates the home from `/etc/skel` before the display manager starts.
-- Reboot = instant reset. No disk writes to clean, no snapshot rollback needed.
+- USB mass-storage devices are blocked via `udev` (keyboard/mouse unaffected).
+- Reboot = instant reset. No disk cleanup, no snapshot rollback needed.
 
-## Architecture
+## End-to-end flow
 
-Boot
-└─ home-<user>.mount   (tmpfs mounted)
-└─ student-home-init.service   (cp /etc/skel → home, chown)
-└─ display-manager.service  (login screen)
+proxmox-template-creator  →  qm clone  →  ansible (student_tmpfs role)  →  verified clean VM
+(base OS template)         (per-PC VM)   (tmpfs + udev + systemd)      (optional: qm template)
+
+1. Build a base OS template with [proxmox-template-creator](https://github.com/polar-n0de/proxmox-template-creator)
+2. Clone it once per classroom PC
+3. Run this repo's Ansible role against each clone
+4. (Optional) Convert the configured clone back into a template for fast future redeploys
 
 ## Repo structure
 
 linux-ephemeral-lab/
 ├── ansible/
 │   ├── inventory.ini
-│   └── playbook.yml       # configures tmpfs home + systemd unit
+│   └── playbook.yml
+├── roles/
+│   └── student_tmpfs/
+│       ├── README.md          # role variables & task breakdown
+│       ├── defaults/main.yml
+│       ├── tasks/main.yml
+│       └── files/99-usb-block.rules
 └── proxmox/
-└── template-notes.md  # golden VM → template → clone workflow
+└── template-notes.md
 
+## Prerequisites
+
+- Ansible >= 2.14
+- Collection: `ansible.posix` (`ansible-galaxy collection install ansible.posix`)
+- Target OS: tested on AlmaLinux 9 (should work on any systemd-based distro: RHEL/Rocky/Debian/Ubuntu)
+- SSH key-based access to target hosts with sudo
 
 ## Usage
 
-### Ansible (bare metal or existing VM)
-
 ```bash
-cd ansible
-ansible-playbook -i inventory.ini playbook.yml
+git clone https://github.com/polar-n0de/linux-ephemeral-lab.git
+cd linux-ephemeral-lab
+ansible-galaxy collection install ansible.posix
 ```
 
-Configures:
-- `student` user with tmpfs home (default 512M, `/home/student`)
-- systemd unit to reset home from `/etc/skel` on every boot
+Edit `ansible/inventory.ini` with your target hostnames/IPs (hostname format `student-pc-NN` — username is auto-derived, e.g. `student-pc-01` → `student_01`).
 
-### Proxmox (fleet deployment)
+```bash
+ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
+```
 
-1. Build one VM, run the Ansible playbook against it.
-2. Convert to template: `qm template <VMID>`
-3. Clone per classroom PC: `qm clone <TEMPLATE_ID> <NEWID> --name student-pc-01 --full`
+## Tested
 
-See `proxmox/template-notes.md` for full steps.
+Validated on 2x AlmaLinux 9 VMs (Proxmox):
+- tmpfs home mounts correctly, mode 0700, per-user isolation
+- systemd unit fires automatically on every boot (confirmed via `journalctl`/`systemctl status` timestamps matching boot time)
+- File written to home before reboot is confirmed gone after reboot
+- USB mass-storage udev rule deployed and reloaded successfully
 
-## Notes / limitations
+## Limitations
 
-- Resets on **reboot**, not on logout. Suits environments where users restart between sessions (driving school labs, exam rooms).
-- tmpfs consumes RAM — size accordingly (`tmpfs_size` var in playbook).
-- Not a substitute for full disk-level protection if persistence outside `/home` matters (browser cache elsewhere, `/tmp`, etc.) — extend the playbook if needed.
+- Resets on **reboot**, not on logout — suits environments where users restart between sessions.
+- tmpfs consumes RAM — size via `tmpfs_size` role variable.
+- Home-directory scope only; browser cache/`/tmp` persistence not addressed (extend the role if needed).
+
+## Roadmap
+
+- [ ] Idle auto-reboot timer
+- [ ] Read-only root filesystem overlay
+- [ ] Molecule test scaffolding
 
 ## License
 
